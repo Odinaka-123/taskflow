@@ -216,3 +216,41 @@ export async function removeMember(teamId: string, uid: string) {
   await updateDoc(doc(db, "teams", teamId), { members });
   await updateDoc(doc(db, "users", uid), { teamId: null });
 }
+
+export async function getInviteById(inviteId: string): Promise<Invite | null> {
+  const snap = await getDoc(doc(db, "invites", inviteId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Invite;
+}
+
+export async function acceptInviteById(inviteId: string, member: TeamMember) {
+  const inviteSnap = await getDoc(doc(db, "invites", inviteId));
+  if (!inviteSnap.exists()) throw new Error("Invite not found");
+
+  const invite = { id: inviteSnap.id, ...inviteSnap.data() } as Invite;
+  if (invite.status !== "pending") throw new Error("Invite already used");
+
+  const teamSnap = await getDoc(doc(db, "teams", invite.teamId));
+  if (!teamSnap.exists()) throw new Error("Team not found");
+
+  const team = teamSnap.data() as Team;
+
+  await updateDoc(doc(db, "teams", invite.teamId), {
+    members: [
+      ...(team.members ?? []),
+      {
+        uid:         member.uid,
+        displayName: member.displayName,
+        email:       member.email,
+        role:        invite.role,
+        joinedAt:    new Date().toISOString(),
+      },
+    ],
+  });
+
+  await updateDoc(doc(db, "invites", invite.id), { status: "accepted" });
+  await updateDoc(doc(db, "users", member.uid), {
+    teamId: invite.teamId,
+    role:   invite.role,
+  });
+}
