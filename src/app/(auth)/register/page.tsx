@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -31,7 +32,6 @@ function RegisterPageInner() {
   const [googleLoad, setGoogleLoad] = useState(false);
   const [inviteValid, setInviteValid] = useState<boolean | null>(null);
 
-  // Validate invite on mount
   useEffect(() => {
     if (!inviteId) return;
     getInviteById(inviteId).then((invite) => {
@@ -48,7 +48,7 @@ function RegisterPageInner() {
     if (password.length < 8)
       return setError("Password must be at least 8 characters.");
     if (password !== confirm) return setError("Passwords don't match.");
-    // Skip role step if invited (role is pre-set)
+
     if (inviteId && inviteValid) {
       handleRegister(name.trim(), email.trim(), password, role);
     } else {
@@ -71,7 +71,6 @@ function RegisterPageInner() {
         displayName,
         userRole,
       );
-      // Accept invite if present
       if (inviteId && inviteValid) {
         await acceptInviteById(inviteId, {
           uid: firebaseUser.uid,
@@ -103,7 +102,8 @@ function RegisterPageInner() {
     setError("");
     setGoogleLoad(true);
     try {
-      const firebaseUser = await loginWithGoogle();
+      const firebaseUser = await loginWithGoogle(inviteId);
+
       if (inviteId && inviteValid) {
         await acceptInviteById(inviteId, {
           uid: firebaseUser.uid,
@@ -114,7 +114,8 @@ function RegisterPageInner() {
         });
       }
       router.push("/dashboard");
-    } catch {
+    } catch (err) {
+      console.error("Google login error details:", err);
       setError("Google sign-in failed. Please try again.");
     } finally {
       setGoogleLoad(false);
@@ -162,7 +163,7 @@ function RegisterPageInner() {
           </p>
 
           {inviteId && inviteTeam ?
-            <div className="bg-white/8 border border-white/15 rounded-2xl p-5 space-y-2">
+            <div className="bg-white/5 border border-white/15 rounded-2xl p-5 space-y-2">
               <div className="w-10 h-10 rounded-xl bg-violet-500/30 flex items-center justify-center mb-3">
                 <svg
                   className="w-5 h-5 text-violet-300"
@@ -207,7 +208,7 @@ function RegisterPageInner() {
                 key={s.n}
                 className={`flex gap-4 p-4 rounded-2xl border transition-all ${
                   (step === 1 && i === 0) || (step === 2 && i === 1) ?
-                    "bg-white/8 border-white/15"
+                    "bg-white/5 border-white/15"
                   : "border-transparent opacity-50"
                 }`}
               >
@@ -275,7 +276,6 @@ function RegisterPageInner() {
             <span className="font-bold text-slate-900">TaskFlow</span>
           </div>
 
-          {/* Invite banner */}
           {inviteId && inviteTeam && inviteValid && (
             <div className="flex items-center gap-2.5 bg-violet-50 border border-violet-200 text-violet-700 text-sm rounded-xl px-4 py-3 mb-6">
               <svg
@@ -330,7 +330,6 @@ function RegisterPageInner() {
                 </p>
               </div>
 
-              {/* Google */}
               <button
                 onClick={handleGoogle}
                 disabled={googleLoad}
@@ -459,7 +458,7 @@ function RegisterPageInner() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542 7z"
                           />
                         </svg>
                       }
@@ -514,7 +513,7 @@ function RegisterPageInner() {
             </>
           )}
 
-          {/* ── STEP 2 (no invite) ── */}
+          {/* ── STEP 2 ── */}
           {step === 2 && !inviteId && (
             <>
               <div className="mb-8">
@@ -632,11 +631,13 @@ function RegisterPageInner() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+        </div>
+      }
+    >
       <RegisterPageInner />
     </Suspense>
   );

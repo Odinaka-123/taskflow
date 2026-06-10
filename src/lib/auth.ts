@@ -46,20 +46,40 @@ export async function loginUser(email: string, password: string) {
   return cred.user;
 }
 
-export async function loginWithGoogle() {
+/**
+ * Signs in with Google. If the user is signing up through an active invite link,
+ * passes the inviteId to link their initial account record to the team space.
+ */
+export async function loginWithGoogle(inviteId?: string | null) {
   const cred = await signInWithPopup(auth, googleProvider);
-  const snap = await getDoc(doc(db, "users", cred.user.uid));
+  const userDocRef = doc(db, "users", cred.user.uid);
+  const snap = await getDoc(userDocRef);
+
   if (!snap.exists()) {
-    await setDoc(doc(db, "users", cred.user.uid), {
+    let initialTeamId = null;
+    let initialRole: UserRole = "member";
+
+    // Pre-fetch invitation details if an inviteId is supplied during sign-up
+    if (inviteId) {
+      const inviteSnap = await getDoc(doc(db, "invites", inviteId));
+      if (inviteSnap.exists() && inviteSnap.data().status === "pending") {
+        const inviteData = inviteSnap.data();
+        initialTeamId = inviteData.teamId || null;
+        initialRole = inviteData.role || "member";
+      }
+    }
+
+    await setDoc(userDocRef, {
       uid: cred.user.uid,
       email: cred.user.email,
       displayName: cred.user.displayName,
       photoURL: cred.user.photoURL,
-      role: "member",
-      teamId: null,
+      role: initialRole,
+      teamId: initialTeamId,
       createdAt: serverTimestamp(),
     });
   }
+
   setSessionCookie(cred.user.uid);
   return cred.user;
 }
