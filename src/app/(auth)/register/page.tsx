@@ -103,15 +103,7 @@ export default function RegisterPage() {
     setError("");
     setGoogleLoad(true);
     try {
-      const { user } = await import("firebase/auth").then(() =>
-        import("@/lib/auth").then((m) => ({
-          user: null,
-          fn: m.loginWithGoogle,
-        })),
-      );
-      // Use loginWithGoogle from auth lib
-      const { loginWithGoogle: googleLogin } = await import("@/lib/auth");
-      const firebaseUser = await googleLogin();
+      const firebaseUser = await loginWithGoogle();
       if (inviteId && inviteValid) {
         await acceptInviteById(inviteId, {
           uid: firebaseUser.uid,
