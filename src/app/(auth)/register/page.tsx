@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { registerUser, loginWithGoogle } from "@/lib/auth";
@@ -13,7 +13,7 @@ const ROLES: { value: UserRole; label: string; desc: string }[] = [
   { value: "viewer", label: "Viewer", desc: "Read-only access" },
 ];
 
-export default function RegisterPage() {
+function RegisterPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteId = searchParams.get("invite");
@@ -627,5 +627,17 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+      </div>
+    }>
+      <RegisterPageInner />
+    </Suspense>
   );
 }
