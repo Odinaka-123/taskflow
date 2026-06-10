@@ -1,7 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useTasks } from "@/hooks/useTasks";
-import { useAuth } from "@/hooks/useAuth";
 import { deleteTask, updateTask } from "@/lib/firestore";
 import { Task, TaskStatus, TaskPriority } from "@/types";
 import { cn, formatDate, getPriorityColor, getStatusColor } from "@/lib/utils";
