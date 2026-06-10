@@ -2,7 +2,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
   onSnapshot,
   addDoc,
   updateDoc,
@@ -16,7 +15,7 @@ import {
 import { db } from "./firebase";
 import { Task, Team, TeamMember, Invite, UserRole } from "@/types";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 function toDate(v: unknown): Date | null {
   if (!v) return null;
   if (v instanceof Timestamp) return v.toDate();
@@ -54,22 +53,25 @@ export function subscribeTasks(
   teamId: string | null,
   callback: (tasks: Task[]) => void,
 ) {
+  // Single where clause avoids needing a composite index
   const q =
     teamId ?
-      query(
-        collection(db, "tasks"),
-        where("teamId", "==", teamId),
-        orderBy("createdAt", "desc"),
-      )
-    : query(
-        collection(db, "tasks"),
-        where("creatorId", "==", uid),
-        orderBy("createdAt", "desc"),
-      );
+      query(collection(db, "tasks"), where("teamId", "==", teamId))
+    : query(collection(db, "tasks"), where("creatorId", "==", uid));
 
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map(docToTask));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const tasks = snap.docs
+        .map(docToTask)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      callback(tasks);
+    },
+    (error) => {
+      console.error("Firestore tasks error:", error);
+      callback([]);
+    },
+  );
 }
 
 export async function createTask(
@@ -87,8 +89,9 @@ export async function updateTask(id: string, data: Partial<Task>) {
   return updateDoc(doc(db, "tasks", id), {
     ...data,
     updatedAt: serverTimestamp(),
-    ...(data.status === "done" ? { completedAt: serverTimestamp() } : {}),
-    ...(data.status && data.status !== "done" ? { completedAt: null } : {}),
+    ...(data.status === "done" ? { completedAt: serverTimestamp() }
+    : data.status ? { completedAt: null }
+    : {}),
   });
 }
 
@@ -100,16 +103,23 @@ export async function deleteTask(id: string) {
 export async function createTeam(
   name: string,
   description: string,
-  owner: TeamMember,
+  owner: TeamMember
 ) {
   const ref = await addDoc(collection(db, "teams"), {
     name,
     description,
-    ownerId: owner.uid,
-    members: [{ ...owner, joinedAt: serverTimestamp() }],
+    ownerId:   owner.uid,
+    members: [
+      {
+        uid:         owner.uid,
+        displayName: owner.displayName,
+        email:       owner.email,
+        role:        "admin",
+        joinedAt:    new Date().toISOString(),
+      },
+    ],
     createdAt: serverTimestamp(),
   });
-  // update user's teamId
   await updateDoc(doc(db, "users", owner.uid), { teamId: ref.id });
   return ref;
 }
@@ -124,9 +134,18 @@ export function subscribeTeam(
   teamId: string,
   callback: (team: Team | null) => void,
 ) {
-  return onSnapshot(doc(db, "teams", teamId), (snap) => {
-    callback(snap.exists() ? ({ id: snap.id, ...snap.data() } as Team) : null);
-  });
+  return onSnapshot(
+    doc(db, "teams", teamId),
+    (snap) => {
+      callback(
+        snap.exists() ? ({ id: snap.id, ...snap.data() } as Team) : null,
+      );
+    },
+    (error) => {
+      console.error("Firestore team error:", error);
+      callback(null);
+    },
+  );
 }
 
 export async function inviteMember(
@@ -158,7 +177,6 @@ export async function getInvitesForEmail(email: string): Promise<Invite[]> {
 }
 
 export async function acceptInvite(invite: Invite, member: TeamMember) {
-  // add member to team
   const teamSnap = await getDoc(doc(db, "teams", invite.teamId));
   if (!teamSnap.exists()) return;
   const team = teamSnap.data() as Team;
@@ -168,9 +186,7 @@ export async function acceptInvite(invite: Invite, member: TeamMember) {
       { ...member, role: invite.role, joinedAt: serverTimestamp() },
     ],
   });
-  // update invite status
   await updateDoc(doc(db, "invites", invite.id), { status: "accepted" });
-  // update user teamId
   await updateDoc(doc(db, "users", member.uid), {
     teamId: invite.teamId,
     role: invite.role,

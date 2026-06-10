@@ -53,11 +53,9 @@ function Avatar({
 function CreateTeamModal({
   open,
   onClose,
-  onCreated,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
 }) {
   const { user, profile } = useAuth();
   const [name, setName] = useState("");
@@ -79,9 +77,9 @@ function CreateTeamModal({
         joinedAt: new Date(),
       };
       await createTeam(name.trim(), desc.trim(), owner);
-      onCreated();
-      onClose();
-    } catch {
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
       setError("Failed to create team. Please try again.");
     } finally {
       setLoading(false);
@@ -183,30 +181,54 @@ function InviteModal({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("member");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [inviteId, setInviteId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const inviteLink =
+    inviteId ?
+      `${window.location.origin}/register?invite=${inviteId}&team=${encodeURIComponent(team.name)}`
+    : null;
+
+  function reset() {
+    setEmail("");
+    setRole("member");
+    setInviteId(null);
+    setError("");
+    setCopied(false);
+  }
+
+  function handleClose() {
+    reset();
+    onClose();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || !user) return;
     setLoading(true);
     setError("");
-    setSuccess(false);
     try {
-      await inviteMember(
+      const ref = await inviteMember(
         team.id,
         team.name,
         email.trim().toLowerCase(),
         role,
         user.uid,
       );
-      setSuccess(true);
-      setEmail("");
+      setInviteId(ref.id);
     } catch {
-      setError("Failed to send invite. Please try again.");
+      setError("Failed to create invite. Please try again.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function copyLink() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   if (!open) return null;
@@ -214,15 +236,15 @@ function InviteModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={handleClose}
       />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-bold text-slate-900">
-            Invite to {team.name}
+            {inviteLink ? "Invite link ready" : `Invite to ${team.name}`}
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
           >
             <svg
@@ -240,16 +262,75 @@ function InviteModal({
             </svg>
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          {error && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              {error}
+
+        {/* Step 1 — fill form */}
+        {!inviteLink && (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                {error}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Email address *
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="colleague@company.com"
+                className="w-full border border-slate-200 hover:border-slate-300 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all"
+              />
             </div>
-          )}
-          {success && (
-            <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Role
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {ROLES.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRole(r)}
+                    className={cn(
+                      "py-2 text-xs font-semibold rounded-xl border-2 capitalize transition-all",
+                      role === r ?
+                        `${ROLE_COLOR[r]} border-current`
+                      : "text-slate-500 bg-white border-slate-200 hover:border-slate-300",
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="flex-1 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                {loading ? "Generating…" : "Generate link"}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Step 2 — show link */}
+        {inviteLink && (
+          <div className="px-6 py-5 space-y-4">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-2.5">
               <svg
-                className="w-4 h-4"
+                className="w-4 h-4 text-emerald-500 flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -261,61 +342,87 @@ function InviteModal({
                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              Invite sent to {email || "member"}!
+              <p className="text-sm text-emerald-700 font-medium">
+                Invite created for <span className="font-bold">{email}</span> as{" "}
+                <span className="capitalize font-bold">{role}</span>
+              </p>
             </div>
-          )}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-              Email address *
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="colleague@company.com"
-              className="w-full border border-slate-200 hover:border-slate-300 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-              Role
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {ROLES.map((r) => (
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Share this link
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-600 truncate font-mono">
+                  {inviteLink}
+                </div>
                 <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRole(r)}
+                  onClick={copyLink}
                   className={cn(
-                    "py-2 text-xs font-semibold rounded-xl border-2 capitalize transition-all",
-                    role === r ?
-                      `${ROLE_COLOR[r]} border-current`
-                    : "text-slate-500 bg-white border-slate-200 hover:border-slate-300",
+                    "flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all flex-shrink-0",
+                    copied ?
+                      "bg-emerald-500 text-white"
+                    : "bg-violet-600 hover:bg-violet-700 text-white",
                   )}
                 >
-                  {r}
+                  {copied ?
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                      Copied!
+                    </>
+                  : <>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                      Copy
+                    </>
+                  }
                 </button>
-              ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                Send this link to your colleague. They&apos;ll be added to the
+                team when they register.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={reset}
+                className="flex-1 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors"
+              >
+                Invite another
+              </button>
+              <button
+                onClick={handleClose}
+                className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                Done
+              </button>
             </div>
           </div>
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
-              {loading ? "Sending…" : "Send invite"}
-            </button>
-          </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -382,8 +489,8 @@ export default function TeamsPage() {
             You&apos;re not in a team yet
           </h2>
           <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
-            Create a new team to start collaborating, or wait for a team invite
-            from a colleague.
+            Create a new team to start collaborating, or ask a teammate to send
+            you an invite link.
           </p>
           <button
             onClick={() => setCreateOpen(true)}
@@ -395,7 +502,6 @@ export default function TeamsPage() {
         <CreateTeamModal
           open={createOpen}
           onClose={() => setCreateOpen(false)}
-          onCreated={() => window.location.reload()}
         />
       </div>
     );
@@ -420,7 +526,7 @@ export default function TeamsPage() {
   // ── Team view ─────────────────────────────────────────────────────────────
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      {/* Team header card */}
+      {/* Team header */}
       <div className="bg-white rounded-2xl border border-slate-100 p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -459,8 +565,7 @@ export default function TeamsPage() {
           )}
         </div>
 
-        {/* Stats row */}
-        <div className="flex gap-4 mt-5 pt-5 border-t border-slate-100">
+        <div className="flex gap-6 mt-5 pt-5 border-t border-slate-100">
           {[
             { label: "Members", value: team.members.length },
             {
@@ -482,12 +587,11 @@ export default function TeamsPage() {
 
       {/* Members list */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-slate-100">
           <h3 className="text-sm font-bold text-slate-800">
             Members ({team.members.length})
           </h3>
         </div>
-
         <div className="divide-y divide-slate-50">
           {team.members.map((member) => {
             const isYou = member.uid === user?.uid;
@@ -500,9 +604,8 @@ export default function TeamsPage() {
                 className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50/50 transition-colors"
               >
                 <Avatar name={member.displayName} />
-
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-semibold text-slate-800 truncate">
                       {member.displayName}
                     </p>
@@ -522,7 +625,6 @@ export default function TeamsPage() {
                   </p>
                 </div>
 
-                {/* Role selector or badge */}
                 {canEdit ?
                   <select
                     value={member.role}
@@ -550,7 +652,6 @@ export default function TeamsPage() {
                   </span>
                 }
 
-                {/* Remove button */}
                 {canEdit && (
                   <button
                     onClick={() => handleRemove(member.uid)}
@@ -577,14 +678,11 @@ export default function TeamsPage() {
         </div>
       </div>
 
-      {/* Invite modal */}
-      {team && (
-        <InviteModal
-          open={inviteOpen}
-          onClose={() => setInviteOpen(false)}
-          team={team}
-        />
-      )}
+      <InviteModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        team={team}
+      />
     </div>
   );
 }
